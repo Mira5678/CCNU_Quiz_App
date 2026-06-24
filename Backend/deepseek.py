@@ -1,9 +1,4 @@
-"""
-DeepSeek API Service Module
-Handles all communication with the DeepSeek API for question generation and grading.
-"""
-
-# backend/deepseek_service.py
+# backend/deepseek.py
 import os
 import json
 import re
@@ -13,7 +8,7 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Load .env from parent directory (project root)
+# Load .env from parent directory
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # Import prompts
@@ -24,49 +19,70 @@ from prompts import (
     GRADE_ANSWERS_TEMPLATE
 )
 
-# Then your service will work
-api_key = os.getenv('DEEPSEEK_API_KEY')
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class DeepSeekService:
-    """Service class for interacting with DeepSeek API."""
+    """Service class for interacting with AI APIs via OpenRouter."""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, use_free_tier: bool = True, model: Optional[str] = None):
         """
-        Initialize the DeepSeek service.
+        Initialize the service.
 
         Args:
-            api_key: DeepSeek API key. If None, reads from environment variable.
+            api_key: API key. If None, reads from environment variable.
+            use_free_tier: If True, uses OpenRouter's free tier (default)
+            model: Specific model to use (overrides default)
         """
-        self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
-        if not self.api_key:
-            raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable.")
+        self.use_free_tier = use_free_tier
 
-        self.api_url = "https://api.deepseek.com/v1/chat/completions"
-        self.model = "deepseek-chat"  # or "deepseek-reasoner" for more complex reasoning
+        # CURRENT WORKING FREE MODELS ON OPENROUTER (Jan 2026)
+        self.free_models = {
+            "gpt_oss": "openai/gpt-oss-120b:free",  # Best overall - recommended!
+            "nemotron_ultra": "nvidia/nemotron-3-ultra:free",  # Great for reasoning
+            "nemotron_super": "nvidia/nemotron-3-super:free",  # Very capable
+            "owl_alpha": "owlalpha/owl-alpha:free",  # Good all-around
+            "poolside": "poolside/laguna-m1:free",  # Good for logic
+        }
+
+        # Use OpenAI GPT OSS 120B as default (best quality)
+        self.default_free_model = self.free_models["gpt_oss"]
+
+        if use_free_tier:
+            self.api_key = api_key or os.getenv('OPENROUTER_API_KEY')
+            if not self.api_key:
+                raise ValueError("OpenRouter API key is required for free tier. Set OPENROUTER_API_KEY in .env")
+            self.api_url = "https://openrouter.ai/api/v1/chat/completions"
+            # Use specified model or default
+            self.model = model or self.default_free_model
+            logger.info("Using OpenRouter free tier with model: %s", self.model)
+        else:
+            # Use DeepSeek's official API (paid)
+            self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY')
+            if not self.api_key:
+                raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY in .env")
+            self.api_url = "https://api.deepseek.com/v1/chat/completions"
+            self.model = "deepseek-chat"
+            logger.info("Using DeepSeek official API")
+
         self.max_retries = 3
-        self.timeout = 30
+        self.timeout = 60  # Increased for free tier
 
     def _call_deepseek_api(self, messages: List[Dict[str, str]],
                            temperature: float = 0.7,
                            response_format: Optional[Dict] = None) -> Dict[str, Any]:
-        """
-        Make a call to the DeepSeek API with retry logic.
-
-        Args:
-            messages: List of message objects for the conversation
-            temperature: Controls randomness (0.0-1.0)
-            response_format: Optional JSON schema for structured output
-
-        Returns:
-            API response as dictionary
-
-        Raises:
-            Exception: If API call fails after retries
-        """
+        """Make a call to the API with retry logic."""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+
+        # Add OpenRouter specific headers for free tier
+        if self.use_free_tier:
+            headers["HTTP-Referer"] = "http://localhost:5000"
+            headers["X-Title"] = "AI Quiz Generator"
 
         payload = {
             "model": self.model,
@@ -76,12 +92,10 @@ class DeepSeekService:
             "stream": False
         }
 
-        # Add response format if specified (for JSON mode)
-        if response_format:
-            payload["response_format"] = response_format
-
         for attempt in range(self.max_retries):
             try:
+                logger.info(f"Making API call (attempt {attempt + 1}) to {self.api_url}")
+                logger.info(f"Using model: {self.model}")
                 response = requests.post(
                     self.api_url,
                     headers=headers,
@@ -93,36 +107,28 @@ class DeepSeekService:
                     return response.json()
                 else:
                     error_msg = f"API error {response.status_code}: {response.text}"
+                    logger.error(error_msg)
                     if attempt < self.max_retries - 1:
+                        logger.info(f"Retrying... ({attempt + 1}/{self.max_retries})")
                         continue
                     raise Exception(error_msg)
 
             except requests.exceptions.RequestException as e:
+                logger.error(f"Request attempt {attempt + 1} failed: {e}")
                 if attempt < self.max_retries - 1:
+                    logger.info(f"Retrying... ({attempt + 1}/{self.max_retries})")
                     continue
                 raise Exception(f"Request failed after {self.max_retries} attempts: {str(e)}")
 
-        raise Exception("Failed to get response from DeepSeek API")
+        raise Exception("Failed to get response from API")
 
     def _extract_json_from_response(self, response_content: str) -> Dict[str, Any]:
-        """
-        Extract JSON from API response, handling markdown code blocks and other formats.
-
-        Args:
-            response_content: Raw response text from API
-
-        Returns:
-            Parsed JSON as dictionary
-
-        Raises:
-            ValueError: If JSON cannot be extracted or parsed
-        """
+        """Extract JSON from API response."""
         # Try to find JSON in markdown code blocks
         json_pattern = r'```(?:json)?\s*([\s\S]*?)\s*```'
         matches = re.findall(json_pattern, response_content)
 
         if matches:
-            # Use the first JSON block found
             json_str = matches[0].strip()
         else:
             # Try to find JSON between curly braces
@@ -133,11 +139,9 @@ class DeepSeekService:
             else:
                 json_str = response_content.strip()
 
-        # Remove any leading/trailing non-JSON text
         try:
             return json.loads(json_str)
         except json.JSONDecodeError as e:
-            # Attempt to fix common JSON issues
             cleaned_json = self._clean_json_string(json_str)
             try:
                 return json.loads(cleaned_json)
@@ -145,22 +149,10 @@ class DeepSeekService:
                 raise ValueError(f"Failed to parse JSON response: {e}\nResponse: {response_content[:200]}...")
 
     def _clean_json_string(self, json_str: str) -> str:
-        """
-        Clean common JSON formatting issues.
-
-        Args:
-            json_str: Raw JSON string
-
-        Returns:
-            Cleaned JSON string
-        """
-        # Remove trailing commas
+        """Clean common JSON formatting issues."""
         json_str = re.sub(r',\s*}', '}', json_str)
         json_str = re.sub(r',\s*]', ']', json_str)
-
-        # Ensure property names are double-quoted
         json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
-
         return json_str
 
     def generate_questions(self,
@@ -168,24 +160,7 @@ class DeepSeekService:
                            difficulty: str = "Intermediate",
                            count: int = 5,
                            refinement_prompt: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Generate quiz questions using DeepSeek API.
-
-        Args:
-            topic: The subject/topic for the questions
-            difficulty: Difficulty level (Beginner, Intermediate, Advanced)
-            count: Number of questions to generate
-            refinement_prompt: Optional refinement instruction for regenerating
-
-        Returns:
-            Dictionary containing questions data
-
-        Example:
-            >>> service = DeepSeekService()
-            >>> result = service.generate_questions("Photosynthesis", "Intermediate", 3)
-            >>> print(result['questions'][0]['question_text'])
-        """
-        # Build the user prompt
+        """Generate quiz questions."""
         if refinement_prompt:
             user_message = f"""
             Topic: {topic}
@@ -210,33 +185,28 @@ class DeepSeekService:
         ]
 
         try:
-            # Request JSON format specifically
             response = self._call_deepseek_api(
                 messages=messages,
-                temperature=0.7,
-                response_format={"type": "json_object"}
+                temperature=0.7
             )
 
-            # Extract the content from the response
             content = response['choices'][0]['message']['content']
-
-            # Parse the JSON from the response
+            logger.info(f"Raw response: {content[:200]}...")
             result = self._extract_json_from_response(content)
 
-            # Validate the response structure
             if not self._validate_questions_response(result):
                 raise ValueError("Invalid questions response format")
 
-            # Add metadata
             result['topic'] = topic
             result['difficulty'] = difficulty
             result['question_count'] = len(result.get('questions', []))
             result['generated_at'] = datetime.now().isoformat()
+            result['model_used'] = self.model
 
             return result
 
         except Exception as e:
-            # Return a structured error response
+            logger.error(f"Question generation failed: {e}")
             return {
                 "status": "error",
                 "error": str(e),
@@ -246,15 +216,7 @@ class DeepSeekService:
             }
 
     def _validate_questions_response(self, response: Dict[str, Any]) -> bool:
-        """
-        Validate the structure of the questions response.
-
-        Args:
-            response: Response dictionary to validate
-
-        Returns:
-            True if valid, False otherwise
-        """
+        """Validate questions response structure."""
         if not isinstance(response, dict):
             return False
 
@@ -270,32 +232,13 @@ class DeepSeekService:
                 return False
             if 'id' not in q or 'question_text' not in q:
                 return False
-            # Ensure question_text is not empty
             if not q['question_text'].strip():
                 return False
 
         return True
 
     def grade_answers(self, questions_and_answers: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """
-        Grade user answers using DeepSeek API with semantic evaluation.
-
-        Args:
-            questions_and_answers: List of dictionaries containing questions and answers
-                Format: [{"id": 1, "question": "What is X?", "user_answer": "..."}, ...]
-
-        Returns:
-            Grading results with scores and feedback
-
-        Example:
-            >>> service = DeepSeekService()
-            >>> qa = [
-            ...     {"id": 1, "question": "What is photosynthesis?", "user_answer": "Process of making food"},
-            ... ]
-            >>> result = service.grade_answers(qa)
-            >>> print(result['overall_score'])
-        """
-        # Validate input
+        """Grade user answers."""
         if not questions_and_answers:
             return {
                 "status": "error",
@@ -305,7 +248,6 @@ class DeepSeekService:
                 "results": []
             }
 
-        # Build the user message with questions and answers
         qa_text = "Questions and Answers to Grade:\n\n"
         for item in questions_and_answers:
             qa_text += f"Question {item['id']}: {item['question']}\n"
@@ -317,28 +259,25 @@ class DeepSeekService:
         ]
 
         try:
-            # Request JSON format
             response = self._call_deepseek_api(
                 messages=messages,
-                temperature=0.3,  # Lower temperature for more consistent grading
-                response_format={"type": "json_object"}
+                temperature=0.3
             )
 
-            # Extract and parse the response
             content = response['choices'][0]['message']['content']
             result = self._extract_json_from_response(content)
 
-            # Validate and enhance the response
             if not self._validate_grading_response(result):
                 raise ValueError("Invalid grading response format")
 
-            # Add metadata
             result['total_questions'] = len(result.get('results', []))
             result['graded_at'] = datetime.now().isoformat()
+            result['model_used'] = self.model
 
             return result
 
         except Exception as e:
+            logger.error(f"Grading failed: {e}")
             return {
                 "status": "error",
                 "error": str(e),
@@ -348,15 +287,7 @@ class DeepSeekService:
             }
 
     def _validate_grading_response(self, response: Dict[str, Any]) -> bool:
-        """
-        Validate the structure of the grading response.
-
-        Args:
-            response: Response dictionary to validate
-
-        Returns:
-            True if valid, False otherwise
-        """
+        """Validate grading response structure."""
         required_fields = ['overall_score', 'summary_feedback', 'results']
 
         if not all(field in response for field in required_fields):
@@ -374,7 +305,6 @@ class DeepSeekService:
             if not all(field in result for field in required_result_fields):
                 return False
 
-            # Validate points
             if not isinstance(result['points_awarded'], (int, float)) or not isinstance(result['max_points'],
                                                                                         (int, float)):
                 return False
@@ -384,35 +314,17 @@ class DeepSeekService:
         return True
 
 
-# Convenience functions for easier integration with app.py
-
+# Convenience functions
 def generate_questions_service(topic: str, difficulty: str = "Intermediate",
-                               count: int = 5, refinement_prompt: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Convenience wrapper for generating questions.
-
-    Args:
-        topic: The subject/topic for the questions
-        difficulty: Difficulty level (Beginner, Intermediate, Advanced)
-        count: Number of questions to generate
-        refinement_prompt: Optional refinement instruction
-
-    Returns:
-        Questions data dictionary
-    """
-    service = DeepSeekService()
+                               count: int = 5, refinement_prompt: Optional[str] = None,
+                               model: Optional[str] = None) -> Dict[str, Any]:
+    """Convenience wrapper for generating questions."""
+    service = DeepSeekService(use_free_tier=True, model=model)
     return service.generate_questions(topic, difficulty, count, refinement_prompt)
 
 
-def grade_answers_service(questions_and_answers: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Convenience wrapper for grading answers.
-
-    Args:
-        questions_and_answers: List of question-answer pairs
-
-    Returns:
-        Grading results dictionary
-    """
-    service = DeepSeekService()
+def grade_answers_service(questions_and_answers: List[Dict[str, Any]],
+                          model: Optional[str] = None) -> Dict[str, Any]:
+    """Convenience wrapper for grading answers."""
+    service = DeepSeekService(use_free_tier=True, model=model)
     return service.grade_answers(questions_and_answers)
