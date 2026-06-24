@@ -16,7 +16,7 @@ if not api_key:
 print(f"✅ OpenRouter API Key found: {api_key[:20]}...")
 
 # Import service
-from deepseek import DeepSeekService, generate_questions_service, grade_answers_service
+from llm_service import DeepSeekService, generate_questions_service, grade_answers_service
 
 # CURRENT WORKING FREE MODELS (Jan 2026)
 FREE_MODELS = {
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         if working:
             print("\n" + "=" * 50)
             print(f"✅ Found working models: {[name for name, _ in working]}")
-            print("   Update default in deepseek.py")
+            print("   Update default in llm_service.py")
             print("=" * 50)
         else:
             print("\n" + "=" * 50)
