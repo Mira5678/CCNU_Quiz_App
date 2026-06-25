@@ -20,11 +20,11 @@ from llm_service import DeepSeekService, generate_questions_service, grade_answe
 
 # CURRENT WORKING FREE MODELS (Jan 2026)
 FREE_MODELS = {
-    "gpt_oss": "openai/gpt-oss-120b:free",  # Best overall
-    "nemotron_ultra": "nvidia/nemotron-3-ultra:free",  # Great reasoning
-    "nemotron_super": "nvidia/nemotron-3-super:free",  # Very capable
-    "owl_alpha": "owlalpha/owl-alpha:free",  # Good all-around
-    "poolside": "poolside/laguna-m1:free",  # Good for logic
+    "gpt_oss": "openai/gpt-oss-120b:free",  # Best overall - recommended!
+    "laguna": "poolside/laguna-xs.2:free",  # Great for reasoning
+    "gpt_20b": "openai/gpt-oss-20b:free",  # Very capable
+    "google_gemma": "google/gemma-4-31b-it:free",  # Good all-around
+    "cohere": "cohere/north-mini-code:free",  # Good for logic
 }
 
 

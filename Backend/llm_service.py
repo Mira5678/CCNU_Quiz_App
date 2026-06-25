@@ -41,14 +41,14 @@ class DeepSeekService:
         # CURRENT WORKING FREE MODELS ON OPENROUTER (Jan 2026)
         self.free_models = {
             "gpt_oss": "openai/gpt-oss-120b:free",  # Best overall - recommended!
-            "nemotron_ultra": "nvidia/nemotron-3-ultra:free",  # Great for reasoning
-            "nemotron_super": "nvidia/nemotron-3-super:free",  # Very capable
-            "owl_alpha": "owlalpha/owl-alpha:free",  # Good all-around
-            "poolside": "poolside/laguna-m1:free",  # Good for logic
+            "laguna": "poolside/laguna-xs.2:free",  # Great for reasoning
+            "gpt_20b": "openai/gpt-oss-20b:free",  # Very capable
+            "google_gemma": "google/gemma-4-31b-it:free",  # Good all-around
+            "cohere": "cohere/north-mini-code:free",  # Good for logic
         }
 
         # Use OpenAI GPT OSS 120B as default (best quality)
-        self.default_free_model = self.free_models["gpt_oss"]
+        self.default_free_model = self.free_models["gpt_20b"]
 
         if use_free_tier:
             self.api_key = api_key or os.getenv('OPENROUTER_API_KEY')
