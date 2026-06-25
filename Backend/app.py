@@ -3,7 +3,7 @@ import json
 import logging
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from deepseek import generate_questions_service, grade_answers_service
+from llm_service import generate_questions_service, grade_answers_service
 from dotenv import load_dotenv
 
 # Load environment variables
