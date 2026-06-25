@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Generator - Test</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f0f4f8;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 25px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: end;
+        }
+        .form-group label {
+            font-weight: 600;
+            margin-right: 5px;
+            min-width: 80px;
+        }
+        .form-group input, .form-group select {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 150px;
+        }
+        .form-group button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .form-group button:hover {
+            background: #2980b9;
+        }
+        .form-group button:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+        #resetBtn {
+            background: #e74c3c !important;
+        }
+        #resetBtn:hover {
+            background: #c0392b !important;
+        }
+        .refinement-area {
+            margin: 20px 0;
+            display: none;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .refinement-area.active {
+            display: flex;
+        }
+        .refinement-area input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .questions-container {
+            margin-top: 30px;
+            border-top: 2px dashed #e0e0e0;
+            padding-top: 20px;
+        }
+        .question-item {
+            background: #f9fafb;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+        }
+        .question-item p {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .question-item textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 60px;
+            font-family: inherit;
+        }
+        .actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .actions button {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-submit {
+            background: #27ae60;
+            color: white;
+        }
+        .btn-submit:hover {
+            background: #1e8449;
+        }
+        .btn-refine {
+            background: #f39c12;
+            color: white;
+        }
+        .btn-refine:hover {
+            background: #d68910;
+        }
+        .results-container {
+            margin-top: 30px;
+            border-top: 2px dashed #e0e0e0;
+            padding-top: 20px;
+        }
+        .score-card {
+            background: #eaf7ea;
+            border-left: 4px solid #27ae60;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .score-card .score {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1e8449;
+        }
+        .feedback-item {
+            background: #fef9e7;
+            border-left: 4px solid #f1c40f;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .feedback-item .qid {
+            font-weight: 600;
+        }
+        .error {
+            color: #e74c3c;
+            background: #fdecea;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .loading {
+            color: #7f8c8d;
+            font-style: italic;
+            margin: 10px 0;
+        }
+        .hidden {
+            display: none;
+        }
+        .info-message {
+            background: #eaf2f8;
+            border-left: 4px solid #3498db;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🧪 Quiz Generator – Backend Test</h1>
+
+    <div class="info-message">
+        ⚡ Auto‑generation is disabled to save your request quota. Click <strong>“Generate Quiz”</strong> to start.
+    </div>
+
+    <div class="form-group">
+        <label for="topic">Topic *</label>
+        <input type="text" id="topic" placeholder="e.g., Photosynthesis" value="Photosynthesis">
+    </div>
+    <div class="form-group">
+        <label for="difficulty">Difficulty</label>
+        <select id="difficulty">
+            <option value="Beginner">Beginner</option>
+            <option value="Intermediate" selected>Intermediate</option>
+            <option value="Advanced">Advanced</option>
+        </select>
+        <label for="count">Questions</label>
+        <select id="count">
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="5" selected>5</option>
+            <option value="7">7</option>
+            <option value="10">10</option>
+        </select>
+        <button id="generateBtn">Generate Quiz</button>
+        <button id="resetBtn">Reset</button>
+    </div>
+
+    <div id="refinementArea" class="refinement-area">
+        <input type="text" id="refinementInput" placeholder="Refinement feedback (e.g., 'Make questions more conceptual')">
+        <button id="refineBtn" class="btn-refine">Regenerate</button>
+    </div>
+
+    <div id="questionsContainer" class="questions-container hidden"></div>
+    <div id="resultsContainer" class="results-container hidden"></div>
+    <div id="loadingMessage" class="loading hidden">⏳ Processing...</div>
+    <div id="errorMessage" class="error hidden"></div>
+</div>
+
+<script>
+    const topicInput = document.getElementById('topic');
+    const difficultySelect = document.getElementById('difficulty');
+    const countSelect = document.getElementById('count');
+    const generateBtn = document.getElementById('generateBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const refineArea = document.getElementById('refinementArea');
+    const refinementInput = document.getElementById('refinementInput');
+    const refineBtn = document.getElementById('refineBtn');
+    const questionsContainer = document.getElementById('questionsContainer');
+    const resultsContainer = document.getElementById('resultsContainer');
+    const loadingMsg = document.getElementById('loadingMessage');
+    const errorMsg = document.getElementById('errorMessage');
+
+    let currentQuestions = [];
+    let currentTopic = '';
+    let currentDifficulty = '';
+    let currentCount = 0;
+
+    function setLoading(loading) {
+        loadingMsg.classList.toggle('hidden', !loading);
+        generateBtn.disabled = loading;
+        refineBtn.disabled = loading;
+    }
+    function showError(text) {
+        if (text) {
+            errorMsg.textContent = text;
+            errorMsg.classList.remove('hidden');
+        } else {
+            errorMsg.classList.add('hidden');
+        }
+    }
+    function clearResults() {
+        resultsContainer.classList.add('hidden');
+        resultsContainer.innerHTML = '';
+    }
+
+    async function generateQuiz(refinementPrompt = null) {
+        const topic = topicInput.value.trim();
+        if (!topic) {
+            showError('Please enter a topic.');
+            return;
+        }
+        currentTopic = topic;
+        currentDifficulty = difficultySelect.value;
+        currentCount = parseInt(countSelect.value, 10);
+
+        const payload = {
+            topic,
+            difficulty: currentDifficulty,
+            count: currentCount
+        };
+        if (refinementPrompt) {
+            payload.refinement_prompt = refinementPrompt;
+        }
+
+        setLoading(true);
+        showError('');
+        clearResults();
+        questionsContainer.classList.add('hidden');
+
+        try {
+            const response = await fetch('/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+
+            if (data.status === 'error') {
+                throw new Error(data.error || 'Unknown generation error');
+            }
+
+            currentQuestions = data.questions || [];
+            if (currentQuestions.length === 0) {
+                throw new Error('No questions returned.');
+            }
+
+            renderQuestions(currentQuestions);
+            questionsContainer.classList.remove('hidden');
+            refineArea.classList.add('active');
+            questionsContainer.scrollIntoView({ behavior: 'smooth' });
+
+        } catch (err) {
+            showError('❌ ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function renderQuestions(questions) {
+        let html = `<h2>📝 Questions (${questions.length})</h2>`;
+        questions.forEach((q, index) => {
+            html += `
+                <div class="question-item" data-id="${q.id}">
+                    <p>${index+1}. ${q.question_text}</p>
+                    <textarea data-qid="${q.id}" placeholder="Type your answer here..."></textarea>
+                </div>
+            `;
+        });
+        html += `
+            <div class="actions">
+                <button class="btn-submit" id="submitBtn">Submit Answers</button>
+            </div>
+        `;
+        questionsContainer.innerHTML = html;
+        // Attach submit event (re‑attach after re‑render)
+        document.getElementById('submitBtn').addEventListener('click', submitQuiz);
+    }
+
+    async function submitQuiz() {
+        const textareas = questionsContainer.querySelectorAll('textarea');
+        const answers = [];
+        textareas.forEach(ta => {
+            const qid = parseInt(ta.dataset.qid, 10);
+            const answer = ta.value.trim();
+            const q = currentQuestions.find(q => q.id === qid);
+            if (q) {
+                answers.push({
+                    id: qid,
+                    question: q.question_text,
+                    user_answer: answer || '(no answer provided)'
+                });
+            }
+        });
+
+        if (answers.length === 0) {
+            showError('No questions to submit.');
+            return;
+        }
+
+        setLoading(true);
+        showError('');
+        resultsContainer.classList.add('hidden');
+        resultsContainer.innerHTML = '';
+
+        try {
+            const response = await fetch('/api/grade', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ answers })
+            });
+            const data = await response.json();
+
+            if (data.status === 'error') {
+                throw new Error(data.error || 'Unknown grading error');
+            }
+
+            renderResults(data);
+            resultsContainer.classList.remove('hidden');
+            resultsContainer.scrollIntoView({ behavior: 'smooth' });
+
+        } catch (err) {
+            showError('❌ ' + err.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function renderResults(data) {
+        const { overall_score, summary_feedback, results } = data;
+        let html = `<h2>📊 Results</h2>`;
+        html += `
+            <div class="score-card">
+                <div class="score">${overall_score}</div>
+                <p><strong>Summary:</strong> ${summary_feedback}</p>
+            </div>
+        `;
+        if (results && results.length) {
+            results.forEach(r => {
+                const icon = r.is_correct ? '✅' : '❌';
+                html += `
+                    <div class="feedback-item">
+                        <div class="qid">Q${r.id} – ${icon} ${r.points_awarded}/${r.max_points} points</div>
+                        <p>${r.ai_feedback}</p>
+                    </div>
+                `;
+            });
+        }
+        resultsContainer.innerHTML = html;
+    }
+
+    function resetAll() {
+        // Clear questions
+        currentQuestions = [];
+        questionsContainer.classList.add('hidden');
+        questionsContainer.innerHTML = '';
+
+        // Clear results
+        resultsContainer.classList.add('hidden');
+        resultsContainer.innerHTML = '';
+
+        // Hide refinement area
+        refineArea.classList.remove('active');
+        refinementInput.value = '';
+
+        // Clear error messages
+        showError('');
+
+        // Reset form to defaults
+        topicInput.value = 'Photosynthesis';
+        difficultySelect.value = 'Intermediate';
+        countSelect.value = '5';
+
+        // Reset loading state
+        setLoading(false);
+
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // --- Event Listeners ---
+    generateBtn.addEventListener('click', () => generateQuiz());
+    resetBtn.addEventListener('click', resetAll);
+
+    refineBtn.addEventListener('click', () => {
+        const feedback = refinementInput.value.trim();
+        if (!feedback) {
+            showError('Please enter refinement feedback.');
+            return;
+        }
+        generateQuiz(feedback);
+    });
+
+    refinementInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            refineBtn.click();
+        }
+    });
+
+    // --- NO AUTO‑GENERATION ON LOAD ---
+    // We removed the window load event that called generateQuiz().
+    // Now the user must click "Generate Quiz" manually.
+</script>
+</body>
+</html>
