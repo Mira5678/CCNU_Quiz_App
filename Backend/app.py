@@ -89,6 +89,10 @@ def generate_questions():
         difficulty = data.get('difficulty', 'Intermediate')
         count = data.get('count', 5)
         refinement_prompt = data.get('refinement_prompt')
+        question_types = data.get('question_types', [])
+        if not isinstance(question_types, list):
+            question_types = []
+        question_types = [str(item).strip().lower() for item in question_types if str(item).strip()]
 
         # Validate required fields
         if not topic:
@@ -119,7 +123,8 @@ def generate_questions():
             topic=topic,
             difficulty=difficulty,
             count=count,
-            refinement_prompt=refinement_prompt
+            refinement_prompt=refinement_prompt,
+            question_types=question_types
         )
 
         # Check if generation was successful

@@ -178,6 +178,20 @@ function scoreQuestion(q: Question, keywords: string[]): number {
   return keywords.reduce((n, kw) => n + (hay.includes(kw) ? 1 : 0), 0);
 }
 
+function normalizeQuestionType(rawType: unknown): QType {
+  const value = String(rawType ?? "").toLowerCase();
+  if (value.includes("multiple") || value === "mc") return "mc";
+  if (value.includes("true") || value.includes("false") || value === "tf") return "tf";
+  return "sa";
+}
+
+function normalizeDifficulty(rawDifficulty: unknown): Diff {
+  const value = String(rawDifficulty ?? "").toLowerCase();
+  if (value.includes("advanced") || value.includes("hard")) return "hard";
+  if (value.includes("intermediate") || value.includes("medium")) return "medium";
+  return "easy";
+}
+
 function gradeShortAnswer(given: string, answer: string): boolean {
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
   const g = norm(given), a = norm(answer);
@@ -1042,6 +1056,7 @@ export default function App() {
             topic: topic,
             difficulty: diff === "all" ? "Intermediate" : diff,
             count: qCount,
+            question_types: selectedTypes,
           };
           fetch('/api/generate', {
             method: 'POST',
@@ -1062,15 +1077,26 @@ export default function App() {
                 setTimeout(() => setScreen("quiz"), 400);
                 return;
               }
-              const qs: Question[] = data.questions.map((q: any, index: number) => ({
-                id: q.id || `gen-${index}`,
-                type: "sa",
-                topic: data.topic || topic,
-                diff: (data.difficulty || "easy") as Diff,
-                question: q.question_text,
-                answer: q.answer || "",
-                explanation: q.explanation || "",
-              }));
+              const qs: Question[] = Array.isArray(data.questions)
+                ? data.questions.map((q: any, index: number) => {
+                    const type = normalizeQuestionType(q.type);
+                    const options = Array.isArray(q.options) && q.options.length > 0
+                      ? q.options
+                      : type === "tf"
+                        ? ["True", "False"]
+                        : undefined;
+                    return {
+                      id: q.id || `gen-${index}`,
+                      type,
+                      topic: data.topic || topic,
+                      diff: normalizeDifficulty(data.difficulty || q.difficulty || "easy"),
+                      question: q.question_text || q.question || "",
+                      options,
+                      answer: q.answer || q.correct_answer || "",
+                      explanation: q.explanation || "",
+                    };
+                  })
+                : [];
               setQuestions(qs);
               setIdx(0);
               setAnswers([]);

@@ -155,29 +155,97 @@ class DeepSeekService:
         json_str = re.sub(r'([{,])\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*:', r'\1"\2":', json_str)
         return json_str
 
-    def generate_questions(self,
-                           topic: str,
-                           difficulty: str = "Intermediate",
-                           count: int = 5,
-                           refinement_prompt: Optional[str] = None) -> Dict[str, Any]:
-        """Generate quiz questions."""
+    def _build_question_generation_prompt(self,
+                                          topic: str,
+                                          difficulty: str = "Intermediate",
+                                          count: int = 5,
+                                          refinement_prompt: Optional[str] = None,
+                                          question_types: Optional[List[str]] = None) -> str:
+        """Build a prompt that handles Mixed topics as a diverse general-knowledge mix."""
+        normalized_topic = (topic or "").strip()
+        is_mixed = normalized_topic.lower() == "mixed"
+
+        if is_mixed:
+            topic_focus = (
+                "a balanced mix of general knowledge topics across science, technology, "
+                "mathematics, geography, history, and literature"
+            )
+            topic_label = "Mixed"
+        else:
+            topic_focus = normalized_topic
+            topic_label = normalized_topic
+
+        normalized_question_types = []
+        if question_types:
+            for raw_type in question_types:
+                if not raw_type:
+                    continue
+                normalized = str(raw_type).strip().lower()
+                if normalized in {"mc", "multiple-choice", "multiple choice"}:
+                    normalized_question_types.append("multiple choice")
+                elif normalized in {"tf", "true-false", "true false"}:
+                    normalized_question_types.append("true/false")
+                elif normalized in {"sa", "short-answer", "short answer"}:
+                    normalized_question_types.append("short answer")
+
         if refinement_prompt:
-            user_message = f"""
-            Topic: {topic}
+            return f"""
+            Topic: {topic_label}
+            Topic focus: {topic_focus}
             Difficulty: {difficulty}
             Number of questions: {count}
+            Requested question types: {', '.join(normalized_question_types) if normalized_question_types else 'mixed'}
 
             Previous questions need refinement based on this feedback:
             {refinement_prompt}
 
             Please generate new questions that address this feedback while maintaining the same topic and difficulty level.
+            If the topic is Mixed, make sure the questions still span a variety of subjects rather than focusing on mixed numbers or one single domain.
+            Make the questions follow the requested question types as closely as possible.
             """
+
+        if normalized_question_types:
+            requested_types_text = ", ".join(normalized_question_types)
         else:
-            user_message = GENERATE_QUESTIONS_TEMPLATE.format(
-                topic=topic,
-                difficulty=difficulty,
-                count=count
-            )
+            requested_types_text = "short answer"
+
+        return f"""Generate {count} high-quality questions about {topic_focus} at the {difficulty} level.
+
+Requirements:
+- Create a mix of the requested question types: {requested_types_text}.
+- For each question, include a `type` field set to one of `multiple-choice`, `true-false`, or `short-answer`.
+- Multiple-choice questions should include 4 options and a clear correct answer.
+- True/false questions should include options `["True", "False"]` and a correct answer.
+- Short-answer questions should be open-ended and require a short written answer (2-3 sentences).
+- Each question must have a clear, correct answer and a brief explanation.
+- If the topic is a mixed/general knowledge request, make sure the questions come from a variety of subjects such as science, technology, mathematics, geography, history, and literature.
+- Do not focus on a single narrow idea or on the phrase "mixed numbers" unless the user explicitly requested a math topic.
+- Format each question as a JSON object with fields: id, type, question_text, answer, explanation, and options where relevant.
+
+Return the questions as a JSON object with this structure:
+{{
+  "status": "success",
+  "questions": [
+    {{"id": 1, "type": "multiple-choice", "question_text": "Question text", "answer": "Correct answer", "explanation": "Brief explanation", "options": ["A", "B", "C", "D"]}}
+  ]
+}}
+
+Only return the JSON object, no other text."""
+
+    def generate_questions(self,
+                           topic: str,
+                           difficulty: str = "Intermediate",
+                           count: int = 5,
+                           refinement_prompt: Optional[str] = None,
+                           question_types: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Generate quiz questions."""
+        user_message = self._build_question_generation_prompt(
+            topic=topic,
+            difficulty=difficulty,
+            count=count,
+            refinement_prompt=refinement_prompt,
+            question_types=question_types
+        )
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT_GENERATE},
@@ -359,10 +427,11 @@ class DeepSeekService:
 # Convenience functions
 def generate_questions_service(topic: str, difficulty: str = "Intermediate",
                                count: int = 5, refinement_prompt: Optional[str] = None,
-                               model: Optional[str] = None) -> Dict[str, Any]:
+                               model: Optional[str] = None,
+                               question_types: Optional[List[str]] = None) -> Dict[str, Any]:
     """Convenience wrapper for generating questions."""
     service = DeepSeekService(use_free_tier=False, model=model)  # <-- changed to False
-    return service.generate_questions(topic, difficulty, count, refinement_prompt)
+    return service.generate_questions(topic, difficulty, count, refinement_prompt, question_types)
 
 
 def grade_answers_service(questions_and_answers: List[Dict[str, Any]],
