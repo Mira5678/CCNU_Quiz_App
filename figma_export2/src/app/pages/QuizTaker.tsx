@@ -21,6 +21,8 @@ export function QuizTaker() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Map<string, string | string[]>>(new Map());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  const [isHintLoading, setIsHintLoading] = useState(false);
 
   useEffect(() => {
     if (!quiz) {
@@ -50,6 +52,30 @@ export function QuizTaker() {
   const handlePrevious = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
+    }
+  };
+
+  const handleHint = async () => {
+    setIsHintLoading(true);
+    setHint(null);
+
+    try {
+      const response = await fetch('/api/hint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: currentQuestion.question,
+          topic: currentQuestion.topic || quiz.title,
+          difficulty: currentQuestion.difficulty,
+        })
+      });
+      const data = await response.json();
+      setHint(data.hint || 'No hint available right now.');
+    } catch (error) {
+      console.error('Hint request failed:', error);
+      setHint('Unable to fetch a hint right now.');
+    } finally {
+      setIsHintLoading(false);
     }
   };
 
@@ -207,6 +233,19 @@ export function QuizTaker() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="flex justify-end">
+              <Button variant="outline" onClick={handleHint} disabled={isHintLoading}>
+                {isHintLoading ? "Getting hint..." : "Hint"}
+              </Button>
+            </div>
+
+            {hint && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                <p className="font-medium">Hint</p>
+                <p className="mt-1">{hint}</p>
+              </div>
+            )}
+
             {renderQuestionInput(currentQuestion)}
           </CardContent>
         </Card>

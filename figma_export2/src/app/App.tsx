@@ -688,13 +688,16 @@ function GeneratingScreen({
 function QuizScreen({
   q, idx, total, selected, setSelected,
   submitted, onSubmit, onNext, answers,
-  gradingResult,
+  gradingResult, hint, isHintLoading, onHint,
 }: {
   q: Question; idx: number; total: number;
   selected: string; setSelected: (s: string) => void;
   submitted: boolean; onSubmit: () => void; onNext: () => void;
   answers: Answer[];
   gradingResult: GradingResult | null;
+  hint: string | null;
+  isHintLoading: boolean;
+  onHint: () => void;
 }) {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const isCorrect = submitted && gradingResult ? gradingResult.correct : false;
@@ -796,7 +799,12 @@ function QuizScreen({
             </div>
           )}
 
-          <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={onHint} disabled={isHintLoading}
+              className="inline-flex items-center gap-2 border border-border bg-card text-foreground rounded-xl px-4 py-2.5 font-semibold text-sm hover:bg-muted/50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed">
+              <Lightbulb size={15} />
+              {isHintLoading ? "Getting hint..." : "Hint"}
+            </button>
             {!submitted ? (
               <button onClick={onSubmit} disabled={!selected.trim()}
                 className="bg-primary text-white rounded-xl px-7 py-3 font-semibold text-sm hover:opacity-90 active:scale-[0.98] transition-all duration-150 disabled:opacity-30 disabled:cursor-not-allowed shadow-md shadow-primary/20">
@@ -810,6 +818,13 @@ function QuizScreen({
               </button>
             )}
           </div>
+
+          {hint && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm text-foreground">
+              <p className="font-semibold text-primary mb-1">Hint</p>
+              <p>{hint}</p>
+            </div>
+          )}
         </div>
 
         {submitted && gradingResult && (
@@ -997,6 +1012,8 @@ export default function App() {
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [notes, setNotes] = useState("");
   const [gradingResult, setGradingResult] = useState<GradingResult | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const [isHintLoading, setIsHintLoading] = useState(false);
 
   const noteKeywords = extractKeywords(notes);
   const detectedTopic = notes.trim().length > 30 ? detectTopic(noteKeywords) : null;
@@ -1148,14 +1165,45 @@ export default function App() {
     }
   };
 
+  const handleHint = async () => {
+    if (!q) return;
+    setIsHintLoading(true);
+    setHint(null);
+
+    try {
+      const response = await fetch('/api/hint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: q.question,
+          topic: q.topic,
+          difficulty: q.diff,
+        })
+      });
+      const data = await response.json();
+      setHint(data.hint || 'No hint available right now.');
+    } catch (error) {
+      console.error('Hint request failed:', error);
+      setHint('Unable to fetch a hint right now.');
+    } finally {
+      setIsHintLoading(false);
+    }
+  };
+
   const next = () => {
     if (idx + 1 >= questions.length) { setScreen("results"); }
-    else { setIdx((i) => i + 1); setSelected(""); setSubmitted(false); setGradingResult(null); }
+    else {
+      setIdx((i) => i + 1);
+      setSelected("");
+      setSubmitted(false);
+      setGradingResult(null);
+      setHint(null);
+    }
   };
 
   const restart = () => {
     setScreen("home"); setAnswers([]); setSelected("");
-    setSubmitted(false); setIdx(0); setQuestions([]); setGradingResult(null);
+    setSubmitted(false); setIdx(0); setQuestions([]); setGradingResult(null); setHint(null);
   };
 
   const score = answers.filter((a) => a.correct).length;
@@ -1179,7 +1227,8 @@ export default function App() {
         <QuizScreen q={q} idx={idx} total={questions.length}
           selected={selected} setSelected={setSelected}
           submitted={submitted} onSubmit={submit} onNext={next}
-          answers={answers} gradingResult={gradingResult} />
+          answers={answers} gradingResult={gradingResult}
+          hint={hint} isHintLoading={isHintLoading} onHint={handleHint} />
       )}
       {screen === "results" && (
         <ResultsScreen questions={questions} answers={answers} score={score} pct={pct} onRestart={restart} />

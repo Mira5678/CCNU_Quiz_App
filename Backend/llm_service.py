@@ -233,6 +233,52 @@ class DeepSeekService:
                 return False
         return True
 
+    def _validate_hint_response(self, response: Dict[str, Any]) -> bool:
+        if not isinstance(response, dict):
+            return False
+        if 'hint' not in response:
+            return False
+        hint = response.get('hint', '')
+        return isinstance(hint, str) and bool(hint.strip())
+
+    def generate_hint(self, question: str, topic: Optional[str] = None,
+                      difficulty: Optional[str] = None) -> Dict[str, Any]:
+        """Generate a short hint for a quiz question."""
+        topic_text = topic or 'the topic'
+        difficulty_text = difficulty or 'Intermediate'
+        user_message = f"""
+        Question: {question}
+        Topic: {topic_text}
+        Difficulty: {difficulty_text}
+
+        Give a concise hint that helps the student without revealing the full answer.
+        Return JSON with this structure:
+        {{"status": "success", "hint": "short hint here"}}
+        """
+
+        messages = [
+            {"role": "system", "content": "You are a helpful tutor. Give a brief, non-revealing hint for a quiz question."},
+            {"role": "user", "content": user_message}
+        ]
+
+        try:
+            response = self._call_deepseek_api(messages=messages, temperature=0.5)
+            content = response['choices'][0]['message']['content']
+            result = self._extract_json_from_response(content)
+
+            if not self._validate_hint_response(result):
+                raise ValueError("Invalid hint response format")
+
+            result['status'] = 'success'
+            return result
+        except Exception as e:
+            logger.error(f"Hint generation failed: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "hint": "Unable to generate a hint right now."
+            }
+
     def grade_answers(self, questions_and_answers: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Grade user answers."""
         if not questions_and_answers:

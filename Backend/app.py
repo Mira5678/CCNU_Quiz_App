@@ -3,7 +3,7 @@ import json
 import logging
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from llm_service import generate_questions_service, grade_answers_service
+from llm_service import generate_questions_service, grade_answers_service, DeepSeekService
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -254,6 +254,29 @@ def health_check():
         "service": "AI Quiz Generator",
         "timestamp": __import__('datetime').datetime.now().isoformat()
     })
+
+
+@app.route('/api/hint', methods=['POST'])
+def generate_hint():
+    """Generate a hint for a single quiz question."""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "error": "Missing JSON payload"}), 400
+
+        question = (data.get('question') or '').strip()
+        topic = (data.get('topic') or '').strip()
+        difficulty = (data.get('difficulty') or 'Intermediate').strip()
+
+        if not question:
+            return jsonify({"status": "error", "error": "Question is required"}), 400
+
+        service = DeepSeekService(use_free_tier=False)
+        result = service.generate_hint(question=question, topic=topic or None, difficulty=difficulty or None)
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error in /api/hint: {str(e)}")
+        return jsonify({"status": "error", "error": f"Server error: {str(e)}", "hint": "Unable to generate a hint right now."}), 500
 
 
 @app.route('/api/models', methods=['GET'])
