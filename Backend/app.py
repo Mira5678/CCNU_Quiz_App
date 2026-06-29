@@ -14,33 +14,46 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-app = Flask(__name__, 
-            static_folder='../frontend',
+# Point static_folder to the built frontend directory (inside backend)
+app = Flask(__name__,
+            static_folder='frontend_build',  # <-- changed to serve built frontend
             static_url_path='')
 
-CORS(app)  # Enable CORS for development
+CORS(app)  # Enable CORS for development (if needed)
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 
+# -------------------- Frontend serving --------------------
+
 @app.route('/')
 def serve_index():
-    """Serve the main HTML page."""
+    """Serve the main HTML page (index.html)."""
     return send_from_directory(app.static_folder, 'index.html')
 
 
 @app.route('/<path:path>')
 def serve_static(path):
-    """Serve static files (CSS, JS, HTML)."""
-    return send_from_directory(app.static_folder, path)
+    """
+    Serve static files (JS, CSS, assets) from the built frontend.
+    If the file is not found, fallback to index.html (for client-side routing).
+    """
+    # Try to serve the file
+    try:
+        return send_from_directory(app.static_folder, path)
+    except Exception:
+        # If file doesn't exist, fallback to index.html (SPA routing)
+        return send_from_directory(app.static_folder, 'index.html')
 
+
+# -------------------- API routes (unchanged) --------------------
 
 @app.route('/api/generate', methods=['POST'])
 def generate_questions():
     """
     Generate quiz questions based on topic and difficulty.
-    
+
     Expected JSON payload:
     {
         "topic": "Photosynthesis",
@@ -48,7 +61,7 @@ def generate_questions():
         "count": 5,                    # Number of questions
         "refinement_prompt": "Make them more conceptual"  # Optional
     }
-    
+
     Returns:
     {
         "status": "success",
@@ -123,7 +136,7 @@ def generate_questions():
 
         # Add status field for frontend
         result['status'] = 'success'
-        
+
         logger.info(f"Successfully generated {len(result['questions'])} questions")
         return jsonify(result)
 
@@ -140,7 +153,7 @@ def generate_questions():
 def grade_answers():
     """
     Grade user answers.
-    
+
     Expected JSON payload:
     {
         "answers": [
@@ -151,7 +164,7 @@ def grade_answers():
             }
         ]
     }
-    
+
     Returns:
     {
         "status": "success",
@@ -178,7 +191,7 @@ def grade_answers():
             }), 400
 
         answers = data.get('answers', [])
-        
+
         if not answers:
             return jsonify({
                 "status": "error",
@@ -192,7 +205,7 @@ def grade_answers():
                     "status": "error",
                     "error": "Invalid answer format"
                 }), 400
-            
+
             required_fields = ['id', 'question', 'user_answer']
             if not all(field in answer for field in required_fields):
                 return jsonify({
@@ -218,7 +231,7 @@ def grade_answers():
 
         # Add status field for frontend
         result['status'] = 'success'
-        
+
         logger.info(f"Successfully graded {len(answers)} answers")
         return jsonify(result)
 
@@ -291,13 +304,13 @@ def internal_error(e):
 if __name__ == '__main__':
     # Get port from environment or use default
     port = int(os.getenv('PORT', 5000))
-    
+
     # Get debug mode from environment
     debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
-    
+
     logger.info(f"Starting AI Quiz Generator server on http://localhost:{port}")
     logger.info(f"Debug mode: {debug}")
-    
+
     app.run(
         host='0.0.0.0',
         port=port,
