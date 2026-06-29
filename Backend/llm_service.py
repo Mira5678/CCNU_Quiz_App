@@ -315,12 +315,12 @@ def generate_questions_service(topic: str, difficulty: str = "Intermediate",
                                count: int = 5, refinement_prompt: Optional[str] = None,
                                model: Optional[str] = None) -> Dict[str, Any]:
     """Convenience wrapper for generating questions."""
-    service = DeepSeekService(use_free_tier=True, model=model)
+    service = DeepSeekService(use_free_tier=False, model=model)  # <-- changed to False
     return service.generate_questions(topic, difficulty, count, refinement_prompt)
 
 
 def grade_answers_service(questions_and_answers: List[Dict[str, Any]],
                           model: Optional[str] = None) -> Dict[str, Any]:
     """Convenience wrapper for grading answers."""
-    service = DeepSeekService(use_free_tier=True, model=model)
+    service = DeepSeekService(use_free_tier=False, model=model)  # <-- changed to False
     return service.grade_answers(questions_and_answers)
