@@ -3,3 +3,10 @@ instance/
 logs/
 .venv/
 .env
+
+# Node.js / Frontend
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
