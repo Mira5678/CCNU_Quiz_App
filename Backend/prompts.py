@@ -73,17 +73,15 @@ Do not include any other text, markdown, or explanations in your response. Only 
 GENERATE_QUESTIONS_TEMPLATE = """Generate {count} high-quality short-answer questions about "{topic}" at the {difficulty} level.
 
 Requirements:
-- Questions should be open-ended and require explanation
-- Each question should test a different aspect of the topic
-- Make questions challenging but fair for the specified difficulty level
-- Format each question clearly and concisely
+- Questions should be open-ended and require a short written answer (2‑3 sentences).
+- Each question must have a clear, correct answer and a brief explanation.
+- Format each question as a JSON object with fields: id, question_text, answer, explanation.
 
-Return the questions as a JSON object with the following structure:
+Return the questions as a JSON object with this structure:
 {{
   "status": "success",
   "questions": [
-    {{"id": 1, "question_text": "Question 1"}},
-    {{"id": 2, "question_text": "Question 2"}}
+    {{"id": 1, "question_text": "Question text", "answer": "Correct answer", "explanation": "Brief explanation"}}
   ]
 }}
 
