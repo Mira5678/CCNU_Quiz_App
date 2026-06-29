@@ -216,25 +216,21 @@ class DeepSeekService:
             }
 
     def _validate_questions_response(self, response: Dict[str, Any]) -> bool:
-        """Validate questions response structure."""
         if not isinstance(response, dict):
             return False
-
         if 'questions' not in response:
             return False
-
         questions = response['questions']
         if not isinstance(questions, list) or len(questions) == 0:
             return False
-
         for q in questions:
             if not isinstance(q, dict):
                 return False
-            if 'id' not in q or 'question_text' not in q:
+            # Required fields: id, question_text, answer, explanation
+            if 'id' not in q or 'question_text' not in q or 'answer' not in q or 'explanation' not in q:
                 return False
-            if not q['question_text'].strip():
+            if not q['question_text'].strip() or not q['answer'].strip() or not q['explanation'].strip():
                 return False
-
         return True
 
     def grade_answers(self, questions_and_answers: List[Dict[str, Any]]) -> Dict[str, Any]:
