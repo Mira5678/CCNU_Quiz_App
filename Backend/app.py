@@ -14,14 +14,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize Flask app
-# Point static_folder to the built frontend directory (inside backend)
 app = Flask(__name__,
-            static_folder='frontend_build',  # <-- changed to serve built frontend
+            static_folder='frontend_build',
             static_url_path='')
 
-CORS(app)  # Enable CORS for development (if needed)
+CORS(app)
 
-# Configuration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 
@@ -29,64 +27,27 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
 
 @app.route('/')
 def serve_index():
-    """Serve the main HTML page (index.html)."""
     return send_from_directory(app.static_folder, 'index.html')
-
 
 @app.route('/<path:path>')
 def serve_static(path):
-    """
-    Serve static files (JS, CSS, assets) from the built frontend.
-    If the file is not found, fallback to index.html (for client-side routing).
-    """
-    # Try to serve the file
     try:
         return send_from_directory(app.static_folder, path)
     except Exception:
-        # If file doesn't exist, fallback to index.html (SPA routing)
         return send_from_directory(app.static_folder, 'index.html')
 
 
-# -------------------- API routes (unchanged) --------------------
+# -------------------- API routes --------------------
 
 @app.route('/api/generate', methods=['POST'])
 def generate_questions():
-    """
-    Generate quiz questions based on topic and difficulty.
-
-    Expected JSON payload:
-    {
-        "topic": "Photosynthesis",
-        "difficulty": "Intermediate",  # Beginner, Intermediate, Advanced
-        "count": 5,                    # Number of questions
-        "refinement_prompt": "Make them more conceptual"  # Optional
-    }
-
-    Returns:
-    {
-        "status": "success",
-        "topic": "Photosynthesis",
-        "difficulty": "Intermediate",
-        "question_count": 5,
-        "questions": [
-            {
-                "id": 1,
-                "question_text": "What is the primary role of chlorophyll..."
-            }
-        ]
-    }
-    """
     try:
-        # Get and validate request data
         data = request.get_json()
         if not data:
-            return jsonify({
-                "status": "error",
-                "error": "Missing JSON payload"
-            }), 400
+            return jsonify({"status": "error", "error": "Missing JSON payload"}), 400
 
         topic = data.get('topic', '').strip()
-        difficulty = data.get('difficulty', 'Intermediate')
+        difficulty_input = data.get('difficulty', 'Intermediate')
         count = data.get('count', 5)
         refinement_prompt = data.get('refinement_prompt')
         question_types = data.get('question_types', [])
@@ -94,17 +55,23 @@ def generate_questions():
             question_types = []
         question_types = [str(item).strip().lower() for item in question_types if str(item).strip()]
 
-        # Validate required fields
         if not topic:
-            return jsonify({
-                "status": "error",
-                "error": "Topic is required"
-            }), 400
+            return jsonify({"status": "error", "error": "Topic is required"}), 400
 
-        # Validate difficulty
+        # ---- FIX: Map frontend difficulty to backend values ----
+        difficulty_map = {
+            "easy": "Beginner",
+            "medium": "Intermediate",
+            "hard": "Advanced",
+            "all": "Intermediate",   # fallback for "all"
+        }
+        # Normalize to lowercase for mapping
+        normalized_difficulty = difficulty_input.lower()
+        mapped = difficulty_map.get(normalized_difficulty, difficulty_input)
+
+        # Validate against allowed values
         valid_difficulties = ['Beginner', 'Intermediate', 'Advanced']
-        if difficulty not in valid_difficulties:
-            difficulty = 'Intermediate'
+        difficulty = mapped if mapped in valid_difficulties else 'Intermediate'
 
         # Validate count
         try:
@@ -118,7 +85,6 @@ def generate_questions():
         if refinement_prompt:
             logger.info(f"With refinement: {refinement_prompt}")
 
-        # Call the service
         result = generate_questions_service(
             topic=topic,
             difficulty=difficulty,
@@ -127,11 +93,9 @@ def generate_questions():
             question_types=question_types
         )
 
-        # Check if generation was successful
         if result.get('status') == 'error':
             return jsonify(result), 500
 
-        # Ensure we have questions
         if not result.get('questions'):
             return jsonify({
                 "status": "error",
@@ -139,9 +103,7 @@ def generate_questions():
                 "questions": []
             }), 500
 
-        # Add status field for frontend
         result['status'] = 'success'
-
         logger.info(f"Successfully generated {len(result['questions'])} questions")
         return jsonify(result)
 
@@ -156,61 +118,18 @@ def generate_questions():
 
 @app.route('/api/grade', methods=['POST'])
 def grade_answers():
-    """
-    Grade user answers.
-
-    Expected JSON payload:
-    {
-        "answers": [
-            {
-                "id": 1,
-                "question": "What is the primary role of chlorophyll...",
-                "user_answer": "Chlorophyll absorbs light energy..."
-            }
-        ]
-    }
-
-    Returns:
-    {
-        "status": "success",
-        "overall_score": "80%",
-        "summary_feedback": "Great understanding...",
-        "results": [
-            {
-                "id": 1,
-                "is_correct": true,
-                "points_awarded": 10,
-                "max_points": 10,
-                "ai_feedback": "Spot on..."
-            }
-        ]
-    }
-    """
     try:
-        # Get and validate request data
         data = request.get_json()
         if not data:
-            return jsonify({
-                "status": "error",
-                "error": "Missing JSON payload"
-            }), 400
+            return jsonify({"status": "error", "error": "Missing JSON payload"}), 400
 
         answers = data.get('answers', [])
-
         if not answers:
-            return jsonify({
-                "status": "error",
-                "error": "No answers provided for grading"
-            }), 400
+            return jsonify({"status": "error", "error": "No answers provided for grading"}), 400
 
-        # Validate each answer
         for answer in answers:
             if not isinstance(answer, dict):
-                return jsonify({
-                    "status": "error",
-                    "error": "Invalid answer format"
-                }), 400
-
+                return jsonify({"status": "error", "error": "Invalid answer format"}), 400
             required_fields = ['id', 'question', 'user_answer']
             if not all(field in answer for field in required_fields):
                 return jsonify({
@@ -218,7 +137,6 @@ def grade_answers():
                     "error": f"Missing required fields. Required: {required_fields}"
                 }), 400
 
-            # Check if answer is empty or too short
             user_answer = answer.get('user_answer', '').strip()
             if not user_answer:
                 answer['user_answer'] = '[No answer provided]'
@@ -226,17 +144,12 @@ def grade_answers():
                 answer['user_answer'] = f'[Answer too short: "{user_answer}"]'
 
         logger.info(f"Grading {len(answers)} answers")
-
-        # Call the service
         result = grade_answers_service(answers)
 
-        # Check if grading was successful
         if result.get('status') == 'error':
             return jsonify(result), 500
 
-        # Add status field for frontend
         result['status'] = 'success'
-
         logger.info(f"Successfully graded {len(answers)} answers")
         return jsonify(result)
 
@@ -253,7 +166,6 @@ def grade_answers():
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
-    """Health check endpoint."""
     return jsonify({
         "status": "healthy",
         "service": "AI Quiz Generator",
@@ -263,7 +175,6 @@ def health_check():
 
 @app.route('/api/hint', methods=['POST'])
 def generate_hint():
-    """Generate a hint for a single quiz question."""
     try:
         data = request.get_json()
         if not data:
@@ -279,18 +190,18 @@ def generate_hint():
         service = DeepSeekService(use_free_tier=False)
         result = service.generate_hint(question=question, topic=topic or None, difficulty=difficulty or None)
         return jsonify(result)
+
     except Exception as e:
         logger.error(f"Error in /api/hint: {str(e)}")
-        return jsonify({"status": "error", "error": f"Server error: {str(e)}", "hint": "Unable to generate a hint right now."}), 500
+        return jsonify({
+            "status": "error",
+            "error": f"Server error: {str(e)}",
+            "hint": "Unable to generate a hint right now."
+        }), 500
 
 
 @app.route('/api/models', methods=['GET'])
 def get_models():
-    """
-    Get available models and their status.
-    This helps the frontend know which models are available.
-    """
-    # Return both free and paid options
     return jsonify({
         "free_tier": {
             "active": True,
@@ -304,7 +215,7 @@ def get_models():
             ]
         },
         "paid_tier": {
-            "active": False,  # Change to True if you have DeepSeek API key
+            "active": False,
             "model": "deepseek-chat"
         }
     })
@@ -312,28 +223,17 @@ def get_models():
 
 @app.errorhandler(404)
 def not_found(e):
-    """Handle 404 errors."""
-    return jsonify({
-        "status": "error",
-        "error": "Endpoint not found"
-    }), 404
+    return jsonify({"status": "error", "error": "Endpoint not found"}), 404
 
 
 @app.errorhandler(500)
 def internal_error(e):
-    """Handle 500 errors."""
     logger.error(f"Internal server error: {str(e)}")
-    return jsonify({
-        "status": "error",
-        "error": "Internal server error"
-    }), 500
+    return jsonify({"status": "error", "error": "Internal server error"}), 500
 
 
 if __name__ == '__main__':
-    # Get port from environment or use default
     port = int(os.getenv('PORT', 5000))
-
-    # Get debug mode from environment
     debug = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'
 
     logger.info(f"Starting AI Quiz Generator server on http://localhost:{port}")

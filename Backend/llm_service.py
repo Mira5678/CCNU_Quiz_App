@@ -161,7 +161,6 @@ class DeepSeekService:
                                           count: int = 5,
                                           refinement_prompt: Optional[str] = None,
                                           question_types: Optional[List[str]] = None) -> str:
-        """Build a prompt that handles Mixed topics as a diverse general-knowledge mix."""
         normalized_topic = (topic or "").strip()
         is_mixed = normalized_topic.lower() == "mixed"
 
@@ -175,62 +174,82 @@ class DeepSeekService:
             topic_focus = normalized_topic
             topic_label = normalized_topic
 
+        # Map to full type names for the prompt
+        type_map = {
+            "mc": "multiple-choice",
+            "tf": "true-false",
+            "sa": "short-answer"
+        }
         normalized_question_types = []
         if question_types:
-            for raw_type in question_types:
-                if not raw_type:
-                    continue
-                normalized = str(raw_type).strip().lower()
-                if normalized in {"mc", "multiple-choice", "multiple choice"}:
-                    normalized_question_types.append("multiple choice")
-                elif normalized in {"tf", "true-false", "true false"}:
-                    normalized_question_types.append("true/false")
-                elif normalized in {"sa", "short-answer", "short answer"}:
-                    normalized_question_types.append("short answer")
+            for raw in question_types:
+                raw = raw.strip().lower()
+                if raw in type_map:
+                    normalized_question_types.append(type_map[raw])
+                else:
+                    # try to map common variants
+                    if raw in {"multiple-choice", "multiple choice"}:
+                        normalized_question_types.append("multiple-choice")
+                    elif raw in {"true-false", "true/false", "tf"}:
+                        normalized_question_types.append("true-false")
+                    elif raw in {"short-answer", "short answer", "sa"}:
+                        normalized_question_types.append("short-answer")
+        # If no valid types, default to all three
+        if not normalized_question_types:
+            normalized_question_types = ["multiple-choice", "true-false", "short-answer"]
+
+        # Build the strict type instruction
+        if len(normalized_question_types) == 1:
+            type_instruction = f"You MUST ONLY generate questions of type **{normalized_question_types[0]}**. Do not include any other types."
+        else:
+            type_instruction = f"You MUST ONLY generate questions of the following types: {', '.join(normalized_question_types)}. Do not include any other types."
+
+        # Common JSON structure instruction
+        json_instruction = """
+    For each question, include a `type` field set to one of the allowed types.
+    - Multiple-choice questions must include 4 options and a clear correct answer.
+    - True/false questions must include options `["True", "False"]` and a correct answer.
+    - Short-answer questions should be open-ended and require a short written answer (2-3 sentences).
+    - Each question must have a clear, correct answer and a brief explanation.
+
+    If the topic is mixed/general knowledge, make sure the questions come from a variety of subjects.
+
+    Format each question as a JSON object with fields: id, type, question_text, answer, explanation, and options where relevant.
+
+    Return the questions as a JSON object with this structure:
+    {
+      "status": "success",
+      "questions": [
+        {"id": 1, "type": "multiple-choice", "question_text": "Question text", "answer": "Correct answer", "explanation": "Brief explanation", "options": ["A", "B", "C", "D"]}
+      ]
+    }
+
+    Only return the JSON object, no other text.
+    """
 
         if refinement_prompt:
-            return f"""
-            Topic: {topic_label}
-            Topic focus: {topic_focus}
-            Difficulty: {difficulty}
-            Number of questions: {count}
-            Requested question types: {', '.join(normalized_question_types) if normalized_question_types else 'mixed'}
+            base = f"""
+    Topic: {topic_label}
+    Topic focus: {topic_focus}
+    Difficulty: {difficulty}
+    Number of questions: {count}
+    Requested question types: {', '.join(normalized_question_types)}
 
-            Previous questions need refinement based on this feedback:
-            {refinement_prompt}
+    Previous questions need refinement based on this feedback:
+    {refinement_prompt}
 
-            Please generate new questions that address this feedback while maintaining the same topic and difficulty level.
-            If the topic is Mixed, make sure the questions still span a variety of subjects rather than focusing on mixed numbers or one single domain.
-            Make the questions follow the requested question types as closely as possible.
-            """
-
-        if normalized_question_types:
-            requested_types_text = ", ".join(normalized_question_types)
+    Please generate new questions that address this feedback while maintaining the same topic, difficulty, and type constraints.
+    {type_instruction}
+    {json_instruction}
+    """
         else:
-            requested_types_text = "short answer"
+            base = f"""
+    Generate {count} high-quality questions about {topic_focus} at the {difficulty} level.
 
-        return f"""Generate {count} high-quality questions about {topic_focus} at the {difficulty} level.
-
-Requirements:
-- Create a mix of the requested question types: {requested_types_text}.
-- For each question, include a `type` field set to one of `multiple-choice`, `true-false`, or `short-answer`.
-- Multiple-choice questions should include 4 options and a clear correct answer.
-- True/false questions should include options `["True", "False"]` and a correct answer.
-- Short-answer questions should be open-ended and require a short written answer (2-3 sentences).
-- Each question must have a clear, correct answer and a brief explanation.
-- If the topic is a mixed/general knowledge request, make sure the questions come from a variety of subjects such as science, technology, mathematics, geography, history, and literature.
-- Do not focus on a single narrow idea or on the phrase "mixed numbers" unless the user explicitly requested a math topic.
-- Format each question as a JSON object with fields: id, type, question_text, answer, explanation, and options where relevant.
-
-Return the questions as a JSON object with this structure:
-{{
-  "status": "success",
-  "questions": [
-    {{"id": 1, "type": "multiple-choice", "question_text": "Question text", "answer": "Correct answer", "explanation": "Brief explanation", "options": ["A", "B", "C", "D"]}}
-  ]
-}}
-
-Only return the JSON object, no other text."""
+    {type_instruction}
+    {json_instruction}
+    """
+        return base
 
     def generate_questions(self,
                            topic: str,
@@ -294,20 +313,21 @@ Only return the JSON object, no other text."""
         for q in questions:
             if not isinstance(q, dict):
                 return False
-            # Required fields: id, question_text, answer, explanation
-            if 'id' not in q or 'question_text' not in q or 'answer' not in q or 'explanation' not in q:
+            # Required fields: id, question_text, answer, explanation, type
+            if not all(field in q for field in ['id', 'question_text', 'answer', 'explanation', 'type']):
                 return False
             if not q['question_text'].strip() or not q['answer'].strip() or not q['explanation'].strip():
                 return False
+            # Validate type value
+            q_type = q.get('type', '').lower()
+            if q_type not in ['multiple-choice', 'true-false', 'short-answer']:
+                return False
+            # If multiple-choice or true-false, options should be present and non-empty
+            if q_type in ['multiple-choice', 'true-false']:
+                options = q.get('options')
+                if not isinstance(options, list) or len(options) < 2:
+                    return False
         return True
-
-    def _validate_hint_response(self, response: Dict[str, Any]) -> bool:
-        if not isinstance(response, dict):
-            return False
-        if 'hint' not in response:
-            return False
-        hint = response.get('hint', '')
-        return isinstance(hint, str) and bool(hint.strip())
 
     def generate_hint(self, question: str, topic: Optional[str] = None,
                       difficulty: Optional[str] = None) -> Dict[str, Any]:
