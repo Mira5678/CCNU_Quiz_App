@@ -329,6 +329,22 @@ class DeepSeekService:
                     return False
         return True
 
+    def _validate_hint_response(self, response: Dict[str, Any]) -> bool:
+        """Validate hint response structure."""
+        if not isinstance(response, dict):
+            return False
+        
+        # Check for required fields
+        if 'hint' not in response:
+            return False
+        
+        # Hint should be a non-empty string
+        hint = response.get('hint', '')
+        if not isinstance(hint, str) or not hint.strip():
+            return False
+    
+        return True
+
     def generate_hint(self, question: str, topic: Optional[str] = None,
                       difficulty: Optional[str] = None) -> Dict[str, Any]:
         """Generate a short hint for a quiz question."""
